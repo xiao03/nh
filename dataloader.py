@@ -73,6 +73,7 @@ def restore_batch(sample_batched, type_size):
     event_seqs, time_seqs, seqs_length = sample_batched
 
     event_seqs_list, time_seqs_list = [], []
+    total_time_list = []
 
     for idx, (event_seq, time_seq, seq_length) in enumerate(zip(event_seqs, time_seqs, seqs_length)):
         tmp_event_seq = torch.ones(seq_length + 1, dtype=torch.int32) * type_size
@@ -82,5 +83,7 @@ def restore_batch(sample_batched, type_size):
         tmp_time_seq = torch.zeros(seq_length + 1, dtype=torch.float)
         tmp_time_seq[1:] = time_seq[:seq_length]
         time_seqs_list.append(tmp_time_seq)
+
+        total_time_list.append(torch.sum(tmp_time_seq))
     
-    return event_seqs_list, time_seqs_list
+    return event_seqs_list, time_seqs_list, total_time_list
