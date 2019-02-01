@@ -2,3 +2,4 @@ data/
 model/
 .vscode/
 __pycache__/
+*.txt
