@@ -13,6 +13,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from dataloader import *
+from torch.utils.data import DataLoader
+
 class CTLSTM(nn.Module):
     '''Continuous time LSTM network with decay function.
     '''
@@ -99,9 +102,41 @@ class CTLSTM(nn.Module):
 
 
 if __name__ == '__main__':
-    event_seq = [5,1,2,4,0,1,2,0,3,1,0,3,2,4,1]
-    time_seq = [0, 0.1, 0.3, 0.4, 1.2, 1.9, 3.2, 4.8, 4.9, 5.4, 6.3, 6.8, 7.2, 8.2, 9]
+    # event_seq = [5,1,2,4,0,1,2,0,3,1,0,3,2,4,1]
+    # time_seq = [0, 0.1, 0.3, 0.4, 1.2, 1.9, 3.2, 4.8, 4.9, 5.4, 6.3, 6.8, 7.2, 8.2, 9]
     model = CTLSTM(32, 5)
-    output = model.forward(event_seq, time_seq)
-    print(output.size())
+    # output = model.forward(event_seq, time_seq)
+    train_dataset = CTLSTMDataset('data/train.pkl')
+    dev_dataset = CTLSTMDataset('data/dev.pkl')
+
+    train_dataloader = DataLoader(train_dataset, batch_size=2, collate_fn=pad_batch_fn, shuffle=True)
+    dev_dataloader = DataLoader(dev_dataset)
+
+    # for i, sample in enumerate(train_dataset):
+    #     print(len(sample['event_seq']))
+
+    
+    
+    for i_batch, sample_batched in enumerate(train_dataloader):
+        if i_batch == 1:
+            event_seqs, time_seqs = restore_batch(sample_batched, model.type_size)
+            batch_output = []
+            for idx, (event_seq, time_seq) in enumerate(zip(event_seqs, time_seqs)):
+                print(event_seq)
+                print(time_seq)
+                print(event_seq.size())
+                print(time_seq.size())
+                output = model.forward(event_seq, time_seq)
+                # batch_output.append(output)
+                print(output.size())
+    #     # print(i_batch, sample_batched['event_seq'])
+    #     for idx, (event_seq, time_seq) in enumerate(zip(sample_batched['event_seq'], sample_batched['time_seq'])):
+    #         print(len(event_seq))
+    #         # if idx == 4:
+    #         #     print(event_seq)
+    #         #     print(time_seq)
+    #         #     output = model.forward(event_seq, time_seq)
+    #     # print(output.size())
+
+    # print(output.size())
 
