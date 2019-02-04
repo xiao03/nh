@@ -114,7 +114,7 @@ class CTLSTM(nn.Module):
         # Calculate term 1 from original state tensors
         # Ignore <BOS> event.
         lambda_k = F.softplus(torch.matmul(h, self.w_a))
-        row_select = torch.arange(len(event_seq)-1)
+        row_select = torch.arange(len(event_seq)-1)+1
         column_select = event_seq[1:].long()
 
         original_loglikelihood = torch.sum(torch.log(1e-9 + 
@@ -149,7 +149,7 @@ if __name__ == '__main__':
 
     # for i, sample in enumerate(train_dataset):
     #     print(len(sample['event_seq']))
-    for i, sample in enumerate(dev_dataloader):
+    for i, sample in enumerate(train_dataloader):
         if i == 1:
             event_seqs, time_seqs, total_time_seqs = dataloader.restore_batch(sample, model.type_size)
             sim_time_seqs, sim_index_seqs = utils.generate_sim_time_seqs(time_seqs)

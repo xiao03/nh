@@ -61,8 +61,8 @@ def train(settings):
             print('Epoch.{} Batch.{}:\nBatch Loss per event: {:5f} nats\nTrain Time: {:2f} s'.format(epoch, i_batch, batch_loss/batch_event_num, toc_batch-tic_batch))
             epoch_train_loss += batch_loss
             train_event_num += batch_event_num
-            if i_batch > 0:
-                break
+            # if i_batch > 0:
+            #     break
         toc_train = time.time()
         print('---\nEpoch.{} Training set\nTrain Loss per event: {:5f} nats\nTrainig Time:{:2f} s'.format(epoch, epoch_train_loss/train_event_num, toc_train-tic_train))
 
@@ -75,8 +75,8 @@ def train(settings):
                 likelihood = model.log_likelihood(event_seq, sim_time_seq, sim_index_seq, total_time)
                 dev_event_num += len(event_seq) - 1
             epoch_dev_loss -= likelihood
-            if i_batch > 0:
-                break
+            # if i_batch > 0:
+            #     break
         toc_eval = time.time()
         toc_epoch = time.time()
         print('Epoch.{} Devlopment set\nDev Loss per event: {:5f} nats\nEval Time:{:2f}\n'.format(epoch, epoch_dev_loss/dev_event_num, toc_eval-tic_eval))
