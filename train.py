@@ -93,7 +93,7 @@ def train(settings):
             l.write("\n")
         
         gap = epoch_dev_loss/dev_event_num - last_dev_loss
-        if epoch > 5 and gap < 1e-4:
+        if gap < 1e-4:
             print('Final log likelihood: {} nats'.format(-epoch_dev_loss/dev_event_num))
             break
         

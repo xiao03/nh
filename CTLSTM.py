@@ -39,6 +39,7 @@ class CTLSTM(nn.Module):
 
         # State tensors
         self.h_d = torch.zeros(self.hidden_size, dtype=torch.float)
+        self.c_d = torch.zeros(self.hidden_size, dtype=torch.float)
         self.c_bar = torch.zeros(self.hidden_size, dtype=torch.float)
         self.c = torch.zeros(self.hidden_size, dtype=torch.float)
 
@@ -76,15 +77,16 @@ class CTLSTM(nn.Module):
         c_d_t = c_bar_t + (c_t - c_bar_t) * torch.exp(-delta_t * duration_t)
         h_d_t = o_t * torch.tanh(c_d_t)
 
-        return h_d_t
+        return c_d_t, h_d_t
     
     def forward(self, event, duration):
         h_list, c_list, c_bar_list, o_list, delta_list = [], [], [], [], []
         seq_length = len(event)
 
         for t in range(seq_length):
-            self.c, self.c_bar, h_t, o_t, delta_t = self.recurrence(self.embedding_event(event[t]), self.h_d, self.c, self.c_bar)
-            self.h_d = self.decay(self.c, self.c_bar, o_t, delta_t, duration[t])
+            self.c, self.c_bar, h_t, o_t, delta_t = self.recurrence(self.embedding_event(event[t]), self.h_d, self.c_d, self.c_bar)
+            # _, h_p = self.decay(self.c, self.c_bar, o_t, delta_t, 0)
+            self.c_d, self.h_d = self.decay(self.c, self.c_bar, o_t, delta_t, duration[t])
             h_list.append(h_t)
             c_list.append(self.c)
             c_bar_list.append(self.c_bar)
@@ -100,7 +102,7 @@ class CTLSTM(nn.Module):
         return self.output
     
     def log_likelihood(self, event_seq, sim_time_seq, sim_index_seq, total_time):
-        ''' Calculate log likelihood per event
+        ''' Calculate log likelihood per sequence
         '''
         h, c, c_bar, o, delta = torch.chunk(self.output, 5, 0)
         out_shape = (h.size()[1], h.size()[2])
@@ -114,7 +116,7 @@ class CTLSTM(nn.Module):
         # Calculate term 1 from original state tensors
         # Ignore <BOS> event.
         lambda_k = F.softplus(torch.matmul(h, self.w_a))
-        row_select = torch.arange(len(event_seq)-1)+1
+        row_select = torch.arange(1, len(event_seq))
         column_select = event_seq[1:].long()
 
         original_loglikelihood = torch.sum(torch.log(1e-9 + 
@@ -123,15 +125,15 @@ class CTLSTM(nn.Module):
         # Calculate simulated loss from MCMC method
         h_d_list = []
         for idx, sim_duration in enumerate(sim_time_seq):
-            h_d_idx = self.decay(c[idx], c_bar[idx], o[idx], delta[idx], sim_duration)
+            _, h_d_idx = self.decay(c[idx], c_bar[idx], o[idx], delta[idx], sim_duration)
             h_d_list.append(h_d_idx)
         h_d = torch.stack(h_d_list)
 
         sim_lambda_k = F.softplus(torch.matmul(h_d, self.w_a))
-        mc_coefficient = total_time / len(event_seq)
-        simulated_loglikelihood = mc_coefficient * torch.sum(torch.sum(sim_lambda_k))
+        mc_coefficient = total_time / (len(event_seq) - 1)
+        simulated_likelihood = mc_coefficient * torch.sum(torch.sum(sim_lambda_k))
 
-        loglikelihood = original_loglikelihood - simulated_loglikelihood
+        loglikelihood = original_loglikelihood - simulated_likelihood
 
         return loglikelihood
 
@@ -149,21 +151,21 @@ if __name__ == '__main__':
 
     # for i, sample in enumerate(train_dataset):
     #     print(len(sample['event_seq']))
-    for i, sample in enumerate(train_dataloader):
-        if i == 1:
-            event_seqs, time_seqs, total_time_seqs = dataloader.restore_batch(sample, model.type_size)
+    # for i, sample in enumerate(train_dataloader):
+    #     if i == 1:
+    #         event_seqs, time_seqs, total_time_seqs = dataloader.restore_batch(sample, model.type_size)
+    #         sim_time_seqs, sim_index_seqs = utils.generate_sim_time_seqs(time_seqs)
+    
+    
+    for i_batch, sample_batched in enumerate(train_dataloader):
+        if i_batch == 1:
+            event_seqs, time_seqs, total_time_seqs = dataloader.restore_batch(sample_batched, model.type_size)
             sim_time_seqs, sim_index_seqs = utils.generate_sim_time_seqs(time_seqs)
-    
-    
-    # for i_batch, sample_batched in enumerate(train_dataloader):
-        # if i_batch == 1:
-        #     event_seqs, time_seqs, total_time_seqs = dataloader.restore_batch(sample_batched, model.type_size)
-        #     sim_time_seqs, sim_index_seqs = utils.generate_sim_time_seqs(time_seqs)
-        #     batch_output = []
-        #     for idx, (event_seq, time_seq, sim_time_seq, sim_index_seq, total_time) in enumerate(zip(event_seqs, time_seqs, sim_time_seqs, sim_index_seqs, total_time_seqs)):
-        #         output = model.forward(event_seq, time_seq)
-        #         likelihood = model.log_likelihood(event_seq, sim_time_seq, sim_index_seq, total_time)
-        #         print(likelihood)
-        #         # batch_output.append(output)
-        #         print(output.size())
+            batch_output = []
+            for idx, (event_seq, time_seq, sim_time_seq, sim_index_seq, total_time) in enumerate(zip(event_seqs, time_seqs, sim_time_seqs, sim_index_seqs, total_time_seqs)):
+                output = model.forward(event_seq, time_seq)
+                likelihood = model.log_likelihood(event_seq, sim_time_seq, sim_index_seq, total_time)
+                print(likelihood)
+                # batch_output.append(output)
+                print(output.size())
 
