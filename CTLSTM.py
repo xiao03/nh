@@ -32,10 +32,13 @@ class CTLSTM(nn.Module):
         self.num_layers = 1
 
         # Parameters
-        self.w_r = nn.Parameter(torch.empty((2*self.hidden_size, 7*self.hidden_size)).uniform_(-1, 1))
-        self.b_r = nn.Parameter(torch.zeros(7*self.hidden_size))
-        self.w_a = nn.Parameter(torch.empty((self.hidden_size, self.type_size)).uniform_(-1, 1))
-        self.emb_event = nn.Parameter(torch.empty((self.type_size + 1, self.hidden_size)).uniform_(-1, 1))
+        self.rec = nn.Linear(2*self.hidden_size, 7*self.hidden_size)
+        # self.w_r = nn.Parameter(torch.empty((2*self.hidden_size, 7*self.hidden_size)).uniform_(-1, 1))
+        # self.b_r = nn.Parameter(torch.zeros(7*self.hidden_size))
+        # self.w_a = nn.Parameter(torch.empty((self.hidden_size, self.type_size)).uniform_(-1, 1))
+        self.wa = nn.Linear(self.hidden_size, self.type_size)
+        self.emb = nn.Embedding(self.type_size+1, self.hidden_size)
+        # self.emb_event = nn.Parameter(torch.empty((self.type_size + 1, self.hidden_size)).uniform_(-1, 1))
 
         # State tensors
         self.h_d = torch.zeros(self.hidden_size, dtype=torch.float)
@@ -45,7 +48,7 @@ class CTLSTM(nn.Module):
 
     
     def embedding_event(self, event):
-        return self.emb_event[int(event)]
+        return self.emb(event.long())
 
     
     def recurrence(self, emb_event_t, h_d_tm1, c_tm1, c_bar_tm1):
@@ -57,7 +60,7 @@ class CTLSTM(nn.Module):
         gate_o,
         gate_i_bar,
         gate_f_bar,
-        gate_delta) = torch.chunk((torch.matmul(feed, self.w_r) + self.b_r), 7, -1)
+        gate_delta) = torch.chunk(self.rec(feed), 7, -1)
 
         gate_i = torch.sigmoid(gate_i)
         gate_f = torch.sigmoid(gate_f)
@@ -69,9 +72,8 @@ class CTLSTM(nn.Module):
 
         c_t = gate_f * c_tm1 + gate_i * gate_z
         c_bar_t = gate_f_bar * c_bar_tm1 + gate_i_bar * gate_z
-        h_t = gate_o * torch.tanh(c_t)
 
-        return c_t, c_bar_t, h_t, gate_o, gate_delta
+        return c_t, c_bar_t, gate_o, gate_delta
 
     def decay(self, c_t, c_bar_t, o_t, delta_t, duration_t):
         c_d_t = c_bar_t + (c_t - c_bar_t) * torch.exp(-delta_t * duration_t)
@@ -84,10 +86,10 @@ class CTLSTM(nn.Module):
         seq_length = len(event)
 
         for t in range(seq_length):
-            self.c, self.c_bar, h_t, o_t, delta_t = self.recurrence(self.embedding_event(event[t]), self.h_d, self.c_d, self.c_bar)
+            self.c, self.c_bar, o_t, delta_t = self.recurrence(self.embedding_event(event[t]), self.h_d, self.c_d, self.c_bar)
             # _, h_p = self.decay(self.c, self.c_bar, o_t, delta_t, 0)
             self.c_d, self.h_d = self.decay(self.c, self.c_bar, o_t, delta_t, duration[t])
-            h_list.append(h_t)
+            h_list.append(self.h_d)
             c_list.append(self.c)
             c_bar_list.append(self.c_bar)
             o_list.append(o_t)
@@ -115,7 +117,7 @@ class CTLSTM(nn.Module):
 
         # Calculate term 1 from original state tensors
         # Ignore <BOS> event.
-        lambda_k = F.softplus(torch.matmul(h, self.w_a))
+        lambda_k = F.softplus(self.wa(h))
         row_select = torch.arange(1, len(event_seq))
         column_select = event_seq[1:].long()
 
@@ -129,7 +131,7 @@ class CTLSTM(nn.Module):
             h_d_list.append(h_d_idx)
         h_d = torch.stack(h_d_list)
 
-        sim_lambda_k = F.softplus(torch.matmul(h_d, self.w_a))
+        sim_lambda_k = F.softplus(self.wa(h_d))
         mc_coefficient = total_time / (len(event_seq) - 1)
         simulated_likelihood = mc_coefficient * torch.sum(torch.sum(sim_lambda_k))
 
