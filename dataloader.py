@@ -37,8 +37,8 @@ class CTLSTMDataset(Dataset):
             for idx, seq in enumerate(seqs):
                 # if idx == 1:
                 #     print(seq[0].keys())
-                self.event_seqs.append([int(event['type_event']) for event in seq])
-                self.time_seqs.append([float(event['time_since_last_event']) for event in seq])
+                self.event_seqs.append(torch.LongTensor([int(event['type_event']) for event in seq]))
+                self.time_seqs.append(torch.FloatTensor([float(event['time_since_last_event']) for event in seq]))
 
     def __len__(self):
         return len(self.event_seqs)
@@ -51,39 +51,55 @@ class CTLSTMDataset(Dataset):
 
         return sample
 
+# def pad_batch_fn(batch_data):
+#     sorted_batch = sorted(batch_data, key=lambda x: len(x['event_seq']), reverse=True)
+
+#     event_seqs = [seq['event_seq'] for seq in sorted_batch]
+#     time_seqs = [seq['time_seq'] for seq in sorted_batch]
+#     seqs_length = list(map(len, event_seqs))
+
+#     for idx, (event_seq, time_seq, seq_length) in enumerate(zip(event_seqs, time_seqs, seqs_length)):
+#         tmp_event_seq = torch.zeros(seqs_length[0])
+#         tmp_event_seq[:seq_length] = torch.IntTensor(event_seq)
+#         event_seqs[idx] = tmp_event_seq
+
+#         tmp_time_seq = torch.zeros(seqs_length[0])
+#         tmp_time_seq[:seq_length] = torch.FloatTensor(time_seq)
+#         time_seqs[idx] = tmp_time_seq
+
+#     return event_seqs, time_seqs, seqs_length
+
 def pad_batch_fn(batch_data):
-    sorted_batch = sorted(batch_data, key=lambda x: len(x['event_seq']), reverse=True)
+    sorted_batch = sorted(batch_data, key=lambda x: x['event_seq'].size(), reverse=True)
+    event_seqs = [seq['event_seq'].long() for seq in sorted_batch]
+    time_seqs = [seq['time_seq'].float() for seq in sorted_batch]
+    seqs_length = torch.LongTensor(list(map(len, event_seqs)))
+    last_time_seqs = torch.stack([torch.sum(time_seq) for time_seq in time_seqs])
 
-    event_seqs = [seq['event_seq'] for seq in sorted_batch]
-    time_seqs = [seq['time_seq'] for seq in sorted_batch]
-    seqs_length = list(map(len, event_seqs))
+    event_seqs_tensor = torch.zeros(len(sorted_batch), seqs_length.max()).long()
+    time_seqs_tensor = torch.zeros(len(sorted_batch), seqs_length.max()).float()
 
-    for idx, (event_seq, time_seq, seq_length) in enumerate(zip(event_seqs, time_seqs, seqs_length)):
-        tmp_event_seq = torch.zeros(seqs_length[0])
-        tmp_event_seq[:seq_length] = torch.IntTensor(event_seq)
-        event_seqs[idx] = tmp_event_seq
-
-        tmp_time_seq = torch.zeros(seqs_length[0])
-        tmp_time_seq[:seq_length] = torch.FloatTensor(time_seq)
-        time_seqs[idx] = tmp_time_seq
-
-    return event_seqs, time_seqs, seqs_length
-
-def restore_batch(sample_batched, type_size):
-    event_seqs, time_seqs, seqs_length = sample_batched
-
-    event_seqs_list, time_seqs_list = [], []
-    total_time_list = []
-
-    for idx, (event_seq, time_seq, seq_length) in enumerate(zip(event_seqs, time_seqs, seqs_length)):
-        tmp_event_seq = torch.ones(seq_length + 1, dtype=torch.int32) * type_size
-        tmp_event_seq[1:] = event_seq[:seq_length]
-        event_seqs_list.append(tmp_event_seq)
-
-        tmp_time_seq = torch.zeros(seq_length + 1, dtype=torch.float)
-        tmp_time_seq[1:] = time_seq[:seq_length]
-        time_seqs_list.append(tmp_time_seq)
-
-        total_time_list.append(torch.sum(tmp_time_seq))
+    for idx, (event_seq, time_seq, seqlen) in enumerate(zip(event_seqs, time_seqs, seqs_length)):
+        event_seqs_tensor[idx, :seqlen] = torch.LongTensor(event_seq)
+        time_seqs_tensor[idx, :seqlen] = torch.FloatTensor(time_seq)
     
-    return event_seqs_list, time_seqs_list, total_time_list
+    return event_seqs_tensor, time_seqs_tensor, last_time_seqs, seqs_length
+
+# def restore_batch(sample_batched, type_size):
+#     event_seqs, time_seqs, seqs_length = sample_batched
+
+#     event_seqs_list, time_seqs_list = [], []
+#     total_time_list = []
+
+#     for idx, (event_seq, time_seq, seq_length) in enumerate(zip(event_seqs, time_seqs, seqs_length)):
+#         tmp_event_seq = torch.ones(seq_length + 1, dtype=torch.int32) * type_size
+#         tmp_event_seq[1:] = event_seq[:seq_length]
+#         event_seqs_list.append(tmp_event_seq)
+
+#         tmp_time_seq = torch.zeros(seq_length + 1, dtype=torch.float)
+#         tmp_time_seq[1:] = time_seq[:seq_length]
+#         time_seqs_list.append(tmp_time_seq)
+
+#         total_time_list.append(torch.sum(tmp_time_seq))
+    
+#     return event_seqs_list, time_seqs_list, total_time_list

@@ -40,21 +40,19 @@ def train(settings):
         for i_batch, sample_batched in enumerate(train_dataloader):
             tic_batch = time.time()
             
-            batch_loss = torch.tensor(0.0)
-            batch_event_num = 0
-            
             optim.zero_grad()
-            event_seqs, time_seqs, total_time_seqs = dataloader.restore_batch(sample_batched, model.type_size)
-            sim_time_seqs, sim_index_seqs = utils.generate_sim_time_seqs(time_seqs)
-            for idx, (event_seq, time_seq, sim_time_seq, sim_index_seq, total_time) in enumerate(zip(event_seqs, time_seqs, sim_time_seqs, sim_index_seqs, total_time_seqs)):
+            # event_seqs, time_seqs, total_time_seqs = dataloader.restore_batch(sample_batched, model.type_size)
+            event_seqs, time_seqs, total_time_seqs, seqs_length = utils.pad_bos(sample_batched, model.type_size)
+            # sim_time_seqs, sim_index_seqs = utils.generate_sim_time_seqs(time_seqs)
+            sim_time_seqs, sim_index_seqs = utils.generate_sim_time_seqs(time_seqs, seqs_length)
+            # for idx, (event_seq, time_seq, sim_time_seq, sim_index_seq, total_time) in enumerate(zip(event_seqs, time_seqs, sim_time_seqs, sim_index_seqs, total_time_seqs)):
                 # optim.zero_grad()
-                model.forward(event_seq, time_seq)
-                likelihood = model.log_likelihood(event_seq, sim_time_seq, sim_index_seq, total_time)
-                batch_event_num += len(event_seq) - 1
-                seq_loss = -likelihood
-                # seq_loss.backward()
-                batch_loss += seq_loss
-            batch_loss.backward(retain_graph=True)
+            model.forward(event_seqs, time_seqs)
+            likelihood = model.log_likelihood(event_seqs, sim_time_seqs, sim_index_seqs, total_time_seqs, seqs_length)
+            batch_event_num = torch.sum(seqs_length-1)
+            batch_loss = -likelihood
+
+            batch_loss.backward()
             optim.step()
             
             toc_batch = time.time()
@@ -68,18 +66,19 @@ def train(settings):
 
         tic_eval = time.time()
         for i_batch, sample_batched in enumerate(dev_dataloader):
-            event_seqs, time_seqs, total_time_seqs = dataloader.restore_batch(sample_batched, model.type_size)
-            sim_time_seqs, sim_index_seqs = utils.generate_sim_time_seqs(time_seqs)
-            for idx, (event_seq, time_seq, sim_time_seq, sim_index_seq, total_time) in enumerate(zip(event_seqs, time_seqs, sim_time_seqs, sim_index_seqs, total_time_seqs)):
-                model.forward(event_seq, time_seq)
-                likelihood = model.log_likelihood(event_seq, sim_time_seq, sim_index_seq, total_time)
-                dev_event_num += len(event_seq) - 1
+            event_seqs, time_seqs, total_time_seqs, seqs_length = utils.pad_bos(sample_batched, model.type_size)
+            sim_time_seqs, sim_index_seqs = utils.generate_sim_time_seqs(time_seqs, seqs_length)
+            # for idx, (event_seq, time_seq, sim_time_seq, sim_index_seq, total_time) in enumerate(zip(event_seqs, time_seqs, sim_time_seqs, sim_index_seqs, total_time_seqs)):
+            model.forward(event_seqs, time_seqs)
+            likelihood = model.log_likelihood(event_seqs, sim_time_seqs, sim_index_seqs, total_time_seqs,seqs_length)
+            
+            dev_event_num += torch.sum(seqs_length-1)
             epoch_dev_loss -= likelihood
             # if i_batch > 0:
             #     break
         toc_eval = time.time()
         toc_epoch = time.time()
-        print('Epoch.{} Devlopment set\nDev Loss per event: {:5f} nats\nEval Time:{:2f}\n'.format(epoch, epoch_dev_loss/dev_event_num, toc_eval-tic_eval))
+        print('Epoch.{} Devlopment set\nDev Loss per event: {:5f} nats\nEval Time:{:2f}s.\n'.format(epoch, epoch_dev_loss/dev_event_num, toc_eval-tic_eval))
         
         with open("loss_{}.txt".format(current_date), 'a') as l:
             l.write("Epoch {}:\n".format(epoch))
@@ -93,7 +92,7 @@ def train(settings):
             l.write("\n")
         
         gap = epoch_dev_loss/dev_event_num - last_dev_loss
-        if gap < 1e-4:
+        if abs(gap) < 1e-4:
             print('Final log likelihood: {} nats'.format(-epoch_dev_loss/dev_event_num))
             break
         

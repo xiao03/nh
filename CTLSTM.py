@@ -40,20 +40,15 @@ class CTLSTM(nn.Module):
         self.emb = nn.Embedding(self.type_size+1, self.hidden_size)
         # self.emb_event = nn.Parameter(torch.empty((self.type_size + 1, self.hidden_size)).uniform_(-1, 1))
 
-        # State tensors
-        self.h_d = torch.zeros(self.hidden_size, dtype=torch.float)
-        self.c_d = torch.zeros(self.hidden_size, dtype=torch.float)
-        self.c_bar = torch.zeros(self.hidden_size, dtype=torch.float)
-        self.c = torch.zeros(self.hidden_size, dtype=torch.float)
+    def init_states(self, batch_size):
+        self.h_d = torch.zeros(batch_size, self.hidden_size, dtype=torch.float)
+        self.c_d = torch.zeros(batch_size, self.hidden_size, dtype=torch.float)
+        self.c_bar = torch.zeros(batch_size, self.hidden_size, dtype=torch.float)
+        self.c = torch.zeros(batch_size, self.hidden_size, dtype=torch.float)
 
-    
-    def embedding_event(self, event):
-        return self.emb(event.long())
-
-    
     def recurrence(self, emb_event_t, h_d_tm1, c_tm1, c_bar_tm1):
-        feed = torch.cat((emb_event_t, h_d_tm1))
-
+        feed = torch.cat((emb_event_t, h_d_tm1), dim=1)
+        # B * 2H
         (gate_i,
         gate_f,
         gate_z,
@@ -76,12 +71,46 @@ class CTLSTM(nn.Module):
         return c_t, c_bar_t, gate_o, gate_delta
 
     def decay(self, c_t, c_bar_t, o_t, delta_t, duration_t):
-        c_d_t = c_bar_t + (c_t - c_bar_t) * torch.exp(-delta_t * duration_t)
+        # print(delta_t.size(), duration_t.size())
+        c_d_t = c_bar_t + (c_t - c_bar_t) * \
+            torch.exp(-delta_t * duration_t.view(-1,1))
+
         h_d_t = o_t * torch.tanh(c_d_t)
 
         return c_d_t, h_d_t
     
-    def forward(self, event, duration):
+    def forward(self, event_seqs, duration_seqs, batch_first = True):
+        if batch_first:
+            event_seqs = event_seqs.transpose(0,1)
+            duration_seqs = duration_seqs.transpose(0,1)
+        
+        batch_size = event_seqs.size()[1]
+        batch_length = event_seqs.size()[0]
+
+        h_list, c_list, c_bar_list, o_list, delta_list = [], [], [], [], []
+
+        for t in range(batch_length):
+            self.init_states(batch_size)
+            self.c, self.c_bar, o_t, delta_t = self.recurrence(self.emb(event_seqs[t]), self.h_d, self.c_d, self.c_bar)
+            self.c_d, self.h_d = self.decay(self.c, self.c_bar, o_t, delta_t, duration_seqs[t])
+            h_list.append(self.h_d)
+            c_list.append(self.c)
+            c_bar_list.append(self.c_bar)
+            o_list.append(o_t)
+            delta_list.append(delta_t)
+        h_seq = torch.stack(h_list)
+        c_seq = torch.stack(c_list)
+        c_bar_seq = torch.stack(c_bar_list)
+        o_seq = torch.stack(o_list)
+        delta_seq = torch.stack(delta_list)
+        
+        # 5 x L x B x H
+        self.output = torch.stack((h_seq, c_seq, c_bar_seq, o_seq, delta_seq))
+        # if batch_first:
+        #     self.output = self.transpose(1,2)
+        return self.output
+    
+    def _forward(self, event, duration):
         h_list, c_list, c_bar_list, o_list, delta_list = [], [], [], [], []
         seq_length = len(event)
 
@@ -102,8 +131,54 @@ class CTLSTM(nn.Module):
 
         self.output = torch.stack((h_seq, c_seq, c_bar_seq, o_seq, delta_seq))
         return self.output
+
+    def log_likelihood(self, event_seqs, sim_time_seqs, sim_index_seqs, total_time_seqs, seqs_length, batch_first=True):
+        ''' Calculate log likelihood per sequence
+        '''
+
+        h, c, c_bar, o, delta = torch.chunk(self.output, 5, 0)
+        # out_shape = (h.size()[1], h.size()[2])
+        # L * B * H
+        h = torch.squeeze(h, 0)
+        c = torch.squeeze(c, 0)
+        c_bar = torch.squeeze(c_bar, 0)
+        o = torch.squeeze(o, 0)
+        delta = torch.squeeze(delta, 0)
+
+        # Calculate term 1 from original state tensors
+        # Ignore <BOS> event.
+        lambda_k = F.softplus(self.wa(h))
+
+        # seq_length_select = torch.arange(1, seqs_length)
+        # seq_event_select = event_seq[1:].long()
+        original_loglikelihood = 0.0
+        lambda_k = lambda_k.transpose(0, 1)
+        # print(lambda_k.size())
+        for idx, seq_len in enumerate(seqs_length):
+            seq_event_select = event_seqs[idx][1:].long()
+            original_loglikelihood += torch.sum(torch.log(1e-9 + 
+                                                     lambda_k[idx,1:seq_len, seq_event_select]))
+
+        # Calculate simulated loss from MCMC method
+        h_d_list = []
+        if batch_first:
+            sim_time_seqs = sim_time_seqs.transpose(0,1)
+        for idx, sim_duration in enumerate(sim_time_seqs):
+            _, h_d_idx = self.decay(c[idx], c_bar[idx], o[idx], delta[idx], sim_duration)
+            h_d_list.append(h_d_idx)
+        h_d = torch.stack(h_d_list)
+
+        sim_lambda_k = F.softplus(self.wa(h_d)).transpose(0,1)
+        simulated_likelihood = 0.0
+        for idx,(total_time, seq_len) in enumerate(zip(total_time_seqs, seqs_length)):
+            mc_coefficient = total_time / (seq_len - 1)
+            simulated_likelihood += mc_coefficient * torch.sum(torch.sum(sim_lambda_k[idx]))
+
+        loglikelihood = original_loglikelihood - simulated_likelihood
+
+        return loglikelihood
     
-    def log_likelihood(self, event_seq, sim_time_seq, sim_index_seq, total_time):
+    def _log_likelihood(self, event_seq, sim_time_seq, sim_index_seq, total_time):
         ''' Calculate log likelihood per sequence
         '''
         h, c, c_bar, o, delta = torch.chunk(self.output, 5, 0)
@@ -161,13 +236,16 @@ if __name__ == '__main__':
     
     for i_batch, sample_batched in enumerate(train_dataloader):
         if i_batch == 1:
-            event_seqs, time_seqs, total_time_seqs = dataloader.restore_batch(sample_batched, model.type_size)
-            sim_time_seqs, sim_index_seqs = utils.generate_sim_time_seqs(time_seqs)
-            batch_output = []
-            for idx, (event_seq, time_seq, sim_time_seq, sim_index_seq, total_time) in enumerate(zip(event_seqs, time_seqs, sim_time_seqs, sim_index_seqs, total_time_seqs)):
-                output = model.forward(event_seq, time_seq)
-                likelihood = model.log_likelihood(event_seq, sim_time_seq, sim_index_seq, total_time)
-                print(likelihood)
+            event_seqs, time_seqs, total_time_seqs, seqs_length = utils.pad_bos(sample_batched, model.type_size)
+            # event_seqs, time_seqs, total_time_seqs = dataloader.restore_batch(sample_batched, model.type_size)
+            sim_time_seqs, sim_index_seqs = utils.generate_sim_time_seqs(time_seqs, seqs_length)
+            print(event_seqs, time_seqs, total_time_seqs, seqs_length)
+            print(event_seqs.size(), time_seqs.size(), total_time_seqs.size())
+            print(sim_time_seqs, sim_index_seqs)
+            print(sim_time_seqs.size(), sim_index_seqs.size())
+            output = model.forward(event_seqs, time_seqs)
+            likelihood = model.log_likelihood(event_seqs, sim_time_seqs, sim_index_seqs, total_time_seqs, seqs_length)
+            print(likelihood)
                 # batch_output.append(output)
-                print(output.size())
+            print(output.size())
 
