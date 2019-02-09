@@ -43,13 +43,13 @@ def generate_sim_time_seqs(time_seqs, seqs_length):
 
 def pad_bos(batch_data, type_size):
     event_seqs, time_seqs, total_time_seqs, seqs_length = batch_data
-    pad_event_seqs = torch.zeros((event_seqs.size()[0], event_seqs.size()[1]+1)).long()
+    pad_event_seqs = torch.zeros((event_seqs.size()[0], event_seqs.size()[1]+1)).long() * type_size
     pad_time_seqs = torch.zeros((time_seqs.size()[0], event_seqs.size()[1]+1)).float()
 
     pad_event_seqs[:, 1:] = event_seqs.clone()
     pad_event_seqs[:, 0] = type_size
     pad_time_seqs[:, 1:] = time_seqs.clone()
-    seqs_length = seqs_length + 1
+    # seqs_length = seqs_length + 1
 
     return pad_event_seqs, pad_time_seqs, total_time_seqs, seqs_length
         

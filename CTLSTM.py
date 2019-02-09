@@ -91,10 +91,11 @@ class CTLSTM(nn.Module):
 
         for t in range(batch_length):
             self.init_states(batch_size)
-            self.c, self.c_bar, o_t, delta_t = self.recurrence(self.emb(event_seqs[t]), self.h_d, self.c_d, self.c_bar)
-            self.c_d, self.h_d = self.decay(self.c, self.c_bar, o_t, delta_t, duration_seqs[t])
+            c, self.c_bar, o_t, delta_t = self.recurrence(self.emb(event_seqs[t]), self.h_d, self.c_d, self.c_bar)
+            _, h_p = self.decay(c, self.c_bar, o_t, delta_t, torch.zeros(1))
+            self.c_d, self.h_d = self.decay(c, self.c_bar, o_t, delta_t, duration_seqs[t])
             h_list.append(self.h_d)
-            c_list.append(self.c)
+            c_list.append(c)
             c_bar_list.append(self.c_bar)
             o_list.append(o_t)
             delta_list.append(delta_t)
@@ -116,9 +117,9 @@ class CTLSTM(nn.Module):
 
         for t in range(seq_length):
             self.c, self.c_bar, o_t, delta_t = self.recurrence(self.embedding_event(event[t]), self.h_d, self.c_d, self.c_bar)
-            # _, h_p = self.decay(self.c, self.c_bar, o_t, delta_t, 0)
+            _, h_p = self.decay(self.c, self.c_bar, o_t, delta_t, 0)
             self.c_d, self.h_d = self.decay(self.c, self.c_bar, o_t, delta_t, duration[t])
-            h_list.append(self.h_d)
+            h_list.append(h_p)
             c_list.append(self.c)
             c_bar_list.append(self.c_bar)
             o_list.append(o_t)
@@ -147,17 +148,21 @@ class CTLSTM(nn.Module):
 
         # Calculate term 1 from original state tensors
         # Ignore <BOS> event.
-        lambda_k = F.softplus(self.wa(h))
+        # lambda_k = F.softplus(self.wa(h))
 
         # seq_length_select = torch.arange(1, seqs_length)
         # seq_event_select = event_seq[1:].long()
         original_loglikelihood = 0.0
-        lambda_k = lambda_k.transpose(0, 1)
+        # lambda_k = lambda_k.transpose(0, 1)
         # print(lambda_k.size())
-        for idx, seq_len in enumerate(seqs_length):
-            seq_event_select = event_seqs[idx][1:].long()
-            original_loglikelihood += torch.sum(torch.log(1e-9 + 
-                                                     lambda_k[idx,1:seq_len, seq_event_select]))
+        for idx, (event_seq, seq_len) in enumerate(zip(event_seqs, seqs_length)):
+            # seq_event_select = event_seqs[idx][1:].long()
+            lambda_k = F.softplus(self.wa(h[1:seq_len+1, idx, :]))
+            
+            # print('event', event_seq[1:seq_len+1].shape)
+            # print('lambda_k shape', lambda_k[ torch.arange(seq_len).long(), event_seq[1:seq_len+1]].shape)
+            original_loglikelihood += torch.sum(torch.log( 
+                                                     lambda_k[ torch.arange(seq_len).long() , event_seq[1:seq_len+1]]))
 
         # Calculate simulated loss from MCMC method
         h_d_list = []
@@ -168,14 +173,15 @@ class CTLSTM(nn.Module):
             h_d_list.append(h_d_idx)
         h_d = torch.stack(h_d_list)
 
-        sim_lambda_k = F.softplus(self.wa(h_d)).transpose(0,1)
+        # sim_lambda_k = F.softplus(self.wa(h_d)).transpose(0,1)
         simulated_likelihood = 0.0
-        for idx,(total_time, seq_len) in enumerate(zip(total_time_seqs, seqs_length)):
-            mc_coefficient = total_time / (seq_len - 1)
-            simulated_likelihood += mc_coefficient * torch.sum(torch.sum(sim_lambda_k[idx]))
+        for idx, (total_time, seq_len) in enumerate(zip(total_time_seqs, seqs_length)):
+            mc_coefficient = total_time / (seq_len)
+            sim_lambda_k = F.softplus(self.wa(h_d[:seq_len,idx,:]))
+            simulated_likelihood += mc_coefficient * torch.sum(torch.sum(sim_lambda_k))
 
         loglikelihood = original_loglikelihood - simulated_likelihood
-
+        print('Term 1:\t{}\nTerm 3:\t{}'.format(original_loglikelihood, simulated_likelihood))
         return loglikelihood
     
     def _log_likelihood(self, event_seq, sim_time_seq, sim_index_seq, total_time):

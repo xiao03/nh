@@ -49,7 +49,7 @@ def train(settings):
                 # optim.zero_grad()
             model.forward(event_seqs, time_seqs)
             likelihood = model.log_likelihood(event_seqs, sim_time_seqs, sim_index_seqs, total_time_seqs, seqs_length)
-            batch_event_num = torch.sum(seqs_length-1)
+            batch_event_num = torch.sum(seqs_length)
             batch_loss = -likelihood
 
             batch_loss.backward()
