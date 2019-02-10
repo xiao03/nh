@@ -108,7 +108,7 @@ if __name__ == "__main__":
         'train_path': 'data/train.pkl',
         'dev_path': 'data/dev.pkl',
         'batch_size': 32,
-        'epoch_num': 10,
+        'epoch_num': 30,
         'current_date': datetime.date.today()
     }
 
