@@ -56,7 +56,8 @@ def train(settings):
             optim.step()
             
             toc_batch = time.time()
-            print('Epoch.{} Batch.{}:\nBatch Likelihood per event: {:5f} nats\nTrain Time: {:2f} s'.format(epoch, i_batch, likelihood/batch_event_num, toc_batch-tic_batch))
+            if i_batch % 100 == 0:
+                print('Epoch.{} Batch.{}:\nBatch Likelihood per event: {:5f} nats\nTrain Time: {:2f} s'.format(epoch, i_batch, likelihood/batch_event_num, toc_batch-tic_batch))
             epoch_train_loss += batch_loss
             train_event_num += batch_event_num
             # if i_batch > 0:
@@ -82,10 +83,10 @@ def train(settings):
         with open("loss_{}.txt".format(current_date), 'a') as l:
             l.write("Epoch {}:\n".format(epoch))
             l.write("Train Event Number:\t\t{}\n".format(train_event_num))
-            l.write("Train loss per event:\t\t{:.4f}\n".format(-epoch_train_loss/train_event_num))
+            l.write("Train Likelihood per event:\t{:.5f}\n".format(-epoch_train_loss/train_event_num))
             l.write("Training time:\t\t\t{:.2f} s\n".format(toc_train-tic_train))
             l.write("Dev Event Number:\t\t{}\n".format(dev_event_num))
-            l.write("Dev loss per event:\t\t{:.4f}\n".format(-epoch_dev_loss/dev_event_num))
+            l.write("Dev Likelihood per event:\t{:.5f}\n".format(-epoch_dev_loss/dev_event_num))
             l.write("Dev evaluating time:\t\t{:.2f} s\n".format(toc_eval-tic_eval))
             l.write("Epoch time:\t\t\t{:.2f} s\n".format(toc_epoch-tic_epoch))
             l.write("\n")
