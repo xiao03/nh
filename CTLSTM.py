@@ -166,7 +166,7 @@ class CTLSTM(nn.Module):
             sim_time_seqs = sim_time_seqs.transpose(0,1)
         for idx, sim_duration in enumerate(sim_time_seqs):
             _, h_d_idx = self.decay(c[idx], c_bar[idx], o[idx], delta[idx], sim_duration)
-            h_d_list.append(h_d_idx)
+            h_d_list.append(h_d_idx)            
         h_d = torch.stack(h_d_list)
 
         sim_lambda_k = F.softplus(self.wa(h_d)).transpose(0,1)
@@ -174,7 +174,7 @@ class CTLSTM(nn.Module):
         for idx, (total_time, seq_len) in enumerate(zip(total_time_seqs, seqs_length)):
             mc_coefficient = total_time / (seq_len)
             # sim_lambda_k = F.softplus(self.wa(h_d[:seq_len,idx,:]))
-            simulated_likelihood[idx] = mc_coefficient * torch.sum(torch.sum(sim_lambda_k[idx]))
+            simulated_likelihood[idx] = mc_coefficient * torch.sum(torch.sum(sim_lambda_k[idx, torch.arange(seq_len).long(), :]))
 
         # print('term3', simulated_likelihood)
         loglikelihood = torch.sum(original_loglikelihood - simulated_likelihood)
