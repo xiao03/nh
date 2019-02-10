@@ -105,6 +105,8 @@ class CTLSTM(nn.Module):
         
         # 5 x L x B x H
         self.output = torch.stack((h_seq, c_seq, c_bar_seq, o_seq, delta_seq))
+        # if batch_first:
+        #     self.output = self.transpose(1,2)
         return self.output
     
     def _forward(self, event, duration):
@@ -149,14 +151,16 @@ class CTLSTM(nn.Module):
         # seq_length_select = torch.arange(1, seqs_length)
         # seq_event_select = event_seq[1:].long()
         original_loglikelihood = torch.zeros(batch_size)
-        lambda_k = F.softplus(self.wa(h)).transpose(0, 1)
+        # lambda_k = F.softplus(self.wa(h)).transpose(0, 1)
         # print(lambda_k.size())
         for idx, (event_seq, seq_len) in enumerate(zip(event_seqs, seqs_length)):
             # seq_event_select = event_seqs[idx][1:].long()
-            # lambda_k = F.softplus(self.wa(h[1:seq_len+1, idx, :]))
+            lambda_k = F.softplus(self.wa(h[1:seq_len+1, idx, :]))
             
+            # print('event', event_seq[1:seq_len+1].shape)
+            # print('lambda_k shape', lambda_k[ torch.arange(seq_len).long(), event_seq[1:seq_len+1]].shape)
             original_loglikelihood[idx] = torch.sum(torch.log( 
-                                                     lambda_k[idx, torch.arange(seq_len).long(), event_seq[1:seq_len+1]]))
+                                                     lambda_k[torch.arange(seq_len).long(), event_seq[1:seq_len+1]]))
         
         # print('term1', original_loglikelihood)
 
@@ -169,12 +173,12 @@ class CTLSTM(nn.Module):
             h_d_list.append(h_d_idx)
         h_d = torch.stack(h_d_list)
 
-        sim_lambda_k = F.softplus(self.wa(h_d)).transpose(0,1)
+        # sim_lambda_k = F.softplus(self.wa(h_d)).transpose(0,1)
         simulated_likelihood = torch.zeros(batch_size)
         for idx, (total_time, seq_len) in enumerate(zip(total_time_seqs, seqs_length)):
             mc_coefficient = total_time / (seq_len)
-            # sim_lambda_k = F.softplus(self.wa(h_d[:seq_len,idx,:]))
-            simulated_likelihood[idx] = mc_coefficient * torch.sum(torch.sum(sim_lambda_k[idx]))
+            sim_lambda_k = F.softplus(self.wa(h_d[:seq_len,idx,:]))
+            simulated_likelihood[idx] = mc_coefficient * torch.sum(torch.sum(sim_lambda_k))
 
         # print('term3', simulated_likelihood)
         loglikelihood = torch.sum(original_loglikelihood - simulated_likelihood)

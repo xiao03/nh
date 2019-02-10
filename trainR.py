@@ -7,7 +7,7 @@ import torch.optim as opt
 from torch.utils.data import DataLoader
 
 import dataloader
-import CTLSTM
+import CTLSTMR
 import utils
 
 def train(settings):
@@ -20,7 +20,7 @@ def train(settings):
     current_date = settings['current_date']
     
 
-    model = CTLSTM.CTLSTM(hidden_size, type_size)
+    model = CTLSTMR.CTLSTM(hidden_size, type_size)
     optim = opt.Adam(model.parameters())
     train_dataset = dataloader.CTLSTMDataset(train_path)
     dev_dataset = dataloader.CTLSTMDataset(dev_path)
@@ -79,7 +79,7 @@ def train(settings):
         toc_epoch = time.time()
         print('Epoch.{} Devlopment set\nDev Likelihood per event: {:5f} nats\nEval Time:{:2f}s.\n'.format(epoch, -epoch_dev_loss/dev_event_num, toc_eval-tic_eval))
         
-        with open("loss_{}.txt".format(current_date), 'a') as l:
+        with open("lossR_{}.txt".format(current_date), 'a') as l:
             l.write("Epoch {}:\n".format(epoch))
             l.write("Train Event Number:\t\t{}\n".format(train_event_num))
             l.write("Train loss per event:\t\t{:.4f}\n".format(-epoch_train_loss/train_event_num))
