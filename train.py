@@ -104,7 +104,7 @@ def train(settings):
 if __name__ == "__main__":
     settings = {
         'hidden_size': 32,
-        'type_size': 5,
+        'type_size': 8,
         'train_path': 'data/train.pkl',
         'dev_path': 'data/dev.pkl',
         'batch_size': 32,
