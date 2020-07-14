@@ -1,10 +1,5 @@
 # -*- coding: utf-8 -*-
-'''
-dataloader.py
-Created by Xiao Liu on Feb. 01, 2019.
-
-Description:
-    Dataloader for Continuous LSTM
+"""Dataloader for neural hawkes process.
 
 Args:
     path: file path for the dataset
@@ -12,10 +7,7 @@ Args:
 
 Results:
     A Dataset class
-
-TODO:
-    
-'''
+"""
 
 import pickle
 import torch

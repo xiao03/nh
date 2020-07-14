@@ -1,5 +1,5 @@
-''' Training code for CTLSTM model
-'''
+# -*- coding: utf-8 -*-
+"""Training code for neural hawkes model."""
 import time
 import datetime
 import torch
@@ -10,7 +10,9 @@ import dataloader
 import CTLSTM
 import utils
 
+
 def train(settings):
+    """Training process."""
     hidden_size = settings['hidden_size']
     type_size = settings['type_size']
     train_path = settings['train_path']
@@ -18,7 +20,6 @@ def train(settings):
     batch_size = settings['batch_size']
     epoch_num = settings['epoch_num']
     current_date = settings['current_date']
-    
 
     model = CTLSTM.CTLSTM(hidden_size, type_size)
     optim = opt.Adam(model.parameters())
@@ -41,12 +42,11 @@ def train(settings):
             tic_batch = time.time()
             
             optim.zero_grad()
-            # event_seqs, time_seqs, total_time_seqs = dataloader.restore_batch(sample_batched, model.type_size)
+            
             event_seqs, time_seqs, total_time_seqs, seqs_length = utils.pad_bos(sample_batched, model.type_size)
-            # sim_time_seqs, sim_index_seqs = utils.generate_sim_time_seqs(time_seqs)
+            
             sim_time_seqs, sim_index_seqs = utils.generate_sim_time_seqs(time_seqs, seqs_length)
-            # for idx, (event_seq, time_seq, sim_time_seq, sim_index_seq, total_time) in enumerate(zip(event_seqs, time_seqs, sim_time_seqs, sim_index_seqs, total_time_seqs)):
-                # optim.zero_grad()
+            
             model.forward(event_seqs, time_seqs)
             likelihood = model.log_likelihood(event_seqs, sim_time_seqs, sim_index_seqs, total_time_seqs, seqs_length)
             batch_event_num = torch.sum(seqs_length)
@@ -60,8 +60,7 @@ def train(settings):
                 print('Epoch.{} Batch.{}:\nBatch Likelihood per event: {:5f} nats\nTrain Time: {:2f} s'.format(epoch, i_batch, likelihood/batch_event_num, toc_batch-tic_batch))
             epoch_train_loss += batch_loss
             train_event_num += batch_event_num
-            # if i_batch > 0:
-            #     break
+
         toc_train = time.time()
         print('---\nEpoch.{} Training set\nTrain Likelihood per event: {:5f} nats\nTrainig Time:{:2f} s'.format(epoch, -epoch_train_loss/train_event_num, toc_train-tic_train))
 
@@ -74,8 +73,7 @@ def train(settings):
             
             dev_event_num += torch.sum(seqs_length)
             epoch_dev_loss -= likelihood
-            # if i_batch > 0:
-            #     break
+
         toc_eval = time.time()
         toc_epoch = time.time()
         print('Epoch.{} Devlopment set\nDev Likelihood per event: {:5f} nats\nEval Time:{:2f}s.\n'.format(epoch, -epoch_dev_loss/dev_event_num, toc_eval-tic_eval))
@@ -97,9 +95,9 @@ def train(settings):
             break
         
         last_dev_loss = epoch_dev_loss/dev_event_num
+    
+    return
 
-
-        
 
 if __name__ == "__main__":
     settings = {
